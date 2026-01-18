@@ -72,33 +72,33 @@ class Book(BaseModel):
     author: str = Field(..., min_length=1, max_length=100)
     pages: int = Field(..., gt=0, description="页数必须大于0")
     isbn: str = Field(..., pattern=r'^\d{10}(\d{3})?$', description="ISBN格式：10位或13位数字")
-    published_year: int = Field(..., ge=1000, le=2024)
+    published_year: int = Field(..., ge=1000)
 
-# 定义“数据校验规则”，是Pydantic 的字段校验装饰器
-# “当这个模型的 title 字段被赋值时，我需要对它做额外检查 / 修正”
-@field_validator('author')  
-def validate_author(cls, v):
-    """验证作者名不能包含数字"""
-    # any():只要有一个为 True，就返回 True
-    if any(char.isdigit() for char in v):
-        '''把字符串 v 一个字符一个字符拿出来问它：“你是数字吗？'''
-        raise ValueError('作者姓名不能包含数字')
-    return v.strip().title() # 去除空格并转为标题格式 .title():每个单词首字母大写,其他字母小写
+    # 定义“数据校验规则”，是Pydantic 的字段校验装饰器
+    # “当这个模型的 title 字段被赋值时，我需要对它做额外检查 / 修正”
+    @field_validator('author')  
+    def validate_author(cls, v):
+        """验证作者名不能包含数字"""
+        # any():只要有一个为 True，就返回 True
+        if any(char.isdigit() for char in v):
+            '''把字符串 v 一个字符一个字符拿出来问它：“你是数字吗？'''
+            raise ValueError('作者姓名不能包含数字')
+        return v.strip().title() # 去除空格并转为标题格式 .title():每个单词首字母大写,其他字母小写
 
-@field_validator('title')
-def validate_title(cls, v):
-    """验证标题不能全为大写"""
-    if v.isupper() and len(v) > 5:
-        raise ValueError('标题不应全为大写字母')
-    return v.strip()
+    @field_validator('title')
+    def validate_title(cls, v):
+        """验证标题不能全为大写"""
+        if v.isupper() and len(v) > 5:
+            raise ValueError('标题不应全为大写字母')
+        return v.strip()
 
-@field_validator('published_year')
-def validate_published_year(cls, v):
-    """验证出版年份合理性"""
-    current_year = datetime.now().year
-    if v > current_year:
-        raise ValueError(f'出版年份不能超过当前年份{current_year}')
-    return v
+    @field_validator('published_year')
+    def validate_published_year(cls, v):
+        """验证出版年份合理性"""
+        current_year = datetime.now().year
+        if v > current_year:
+            raise ValueError(f'出版年份不能超过当前年份{current_year}')
+        return v
 
 @app.post("/books/")
 async def create_book(book: Book):
@@ -106,4 +106,50 @@ async def create_book(book: Book):
     return {
         "message": "图书创建成功",
         "book": book
+    }
+
+
+# =============================================================================
+# 4. 嵌套模型
+# =============================================================================
+
+from enum import Enum
+
+class Address(BaseModel):
+    """地址模型"""
+    street: str = Field(..., min_length=1)
+    city: str = Field(..., min_length=1)
+    postal_code: str = Field(..., pattern=r'^\d{6}$', description="6位邮政编码")
+    country: str = Field(default="中国")
+
+class CustomerStatus(str, Enum):
+    """客户状态枚举"""
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+    SUSPENDED = "suspended"
+
+class Customer(BaseModel):
+    """客户模型，包含嵌套的地址模型"""
+    name: str = Field(..., min_length=1, max_length=50)
+    email: str = Field(..., pattern=r'^[^@]+@[^@]+\.[^@]+$')
+    phone: Optional[str] = Field(None, pattern=r'^1[3-9]\d{9}$', description="中国手机号格式")
+    address: Address
+    status: CustomerStatus = CustomerStatus.ACTIVE
+    join_date: datetime =  Field(default_factory=datetime.now)
+
+    @field_validator('email')
+    def validate_email(cls, v):
+        """验证邮箱不能是临时邮箱域名"""
+        temp_domains = ['temp-mail.org', '10minutemail.com', 'guerrillamail.com']
+        domain = v.split('@')[1].lower()
+        if domain in temp_domains:
+            raise ValueError('不允许使用临时邮箱地址')
+        return v.lower()
+    
+@app.post("/customers/")
+async def create_customer(customer: Customer):
+    """创建客户，演示嵌套模型"""
+    return {
+        "message": "客户创建成功",
+        "customer": customer
     }
