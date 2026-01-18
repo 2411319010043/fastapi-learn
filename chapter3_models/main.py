@@ -153,3 +153,62 @@ async def create_customer(customer: Customer):
         "message": "客户创建成功",
         "customer": customer
     }
+
+
+# =============================================================================
+# 6. 列表和复杂数据结构
+# =============================================================================
+
+class OrderItem(BaseModel):
+    """订单项模型"""
+    product_id: int = Field(..., gt=0)
+    product_name: str = Field(..., min_length=1)
+    quantity: int = Field(..., gt=0, le=100)
+    unit_price: float = Field(..., gt=0)
+
+    @property
+    def total_price(self) -> float:
+        """计算小计"""
+        return self.quantity  * self.unit_price
+    
+class Order(BaseModel):
+    """订单模型"""
+    customer_id: int = Field(..., gt=0)
+    items: List[OrderItem] = Field(..., min_items=1, max_items=50)
+    discount_rate: float = Field(0, ge=0, le=50)
+    notes: Optional[str] = Field(None, max_length=500)
+
+    @field_validator('items')
+    @classmethod
+    def validate_items(cls, v):
+        """验证订单项不能重复"""
+        product_ids = [item.product_id for item in v]
+        if len(product_ids) != len(set(product_ids)):
+            raise ValueError('订单中不能包含重复的商品')
+        return v
+    
+    @property
+    def subtotal(self) -> float:
+        """计算小计"""
+        return sum(item.total_price for item in self.items)
+    
+    @property
+    def total_amount(self) -> float:
+        """计算总金额（含折扣）"""
+        subtotal = self.subtotal
+        discount = subtotal * (self.discount_rate / 100)
+        return subtotal - discount
+    
+@app.post("/orders/")
+async def create_order(order: Order):
+    """创建订单，演示复杂数据结构验证"""
+    return{
+        "message": "订单创建成功",
+        "order": order,
+        "summary":{
+            "item_count": len(order.items),
+            "subtotal": order.subtotal,
+            "discount": order.subtotal * (order.discount_rate / 100),
+            "total_amount": order.total_amount
+        }
+    }
